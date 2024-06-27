@@ -45,6 +45,11 @@ class MLP(nn.Module):
         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd)
         self.gelu = nn.GELU(approximate='tanh')
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd)
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        return x
 
 class Block(nn.Module):
     def __init__(self, config):
@@ -82,9 +87,10 @@ class GPT(nn.Module):
     
     def forward(self, idx):
         # idx is of shape (B, T)
+        B,T = idx.size()
         assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block_size}"
         # forward the token and position embeddings
-        pos = torch.arange(0, T, dtype=torch.log, device=idx.device) # shape (T)
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape (T)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (T, n_embd)
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (B, T, n_embd)
         x = tok_emb + pos_emb
@@ -145,26 +151,26 @@ class GPT(nn.Module):
                     sd[k].copy_(sd_hf[k])
         return model
 
-num_return_sequences = 5
-max_length = 30
+num_return_sequences = 6
+max_length = 40
 
 model = GPT.from_pretrained('gpt2')
 model.eval()
-model.to('cuda')
+model.to('cpu')
 
 # prefix tokens
 import tiktoken
 enc = tiktoken.get_encoding('gpt2')
-tokens = enc.encode("Hello, I'm a language model")
+tokens = enc.encode("Hello, I'm a Programmer")
 tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
-x = tokens.to('cuda')
+x = tokens.to('cpu')
 
 # generate! right now x is (B, T) where B = 5, T = 8
 # set the seed to 42
 torch.manual_seed(42)
-torch.cuda.manual_seed(42)
-while x.size() < max_length:
+#torch.cpu.manual_seed(42)
+while x.size(dim=1) < max_length:
     # forward the model to get the logits
     with torch.no_grad():
         logits = model(x) # (B, T, vocab_size)
@@ -182,8 +188,8 @@ while x.size() < max_length:
         # append to the sequence
         x = torch.cat((x, xcol), dim=1)
 
-    # print the generated text
-    for i in range(num_return_sequences):
-        tokens = x[i, :max_length].tolist()
-        decoded = enc.decode(tokens)
-        print(">", decoded)
+# print the generated text
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
